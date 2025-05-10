@@ -1,0 +1,11 @@
+---
+- name: Download files
+  hosts: localhost
+  become: yes  
+
+  tasks: 
+  - name: Download file
+    get_url:
+      url: https://www.python.org/downloads/release/python-3132/
+      dest: /tmp/
+      mode: 0777  

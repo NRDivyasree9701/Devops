@@ -1,0 +1,4 @@
+---
+# defaults file for npm
+node_version: "22.x"  # Specify Node.js version
+pm2_version: "latest"
