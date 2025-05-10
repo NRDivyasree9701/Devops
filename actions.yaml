@@ -1,0 +1,193 @@
+name: CI/CD for Terraform & Backend Deployment
+
+'on':
+  push:
+    branches:
+      - main
+      - dev
+
+jobs:
+  infra-provisioning:
+    name: Provision EC2 with Terraform
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Terraform Repo
+        uses: actions/checkout@v4
+        with:
+          repository: NRDivyaSree-swaas/tf-file
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.6.0
+
+      - name: Initialize Terraform
+        run: terraform init
+
+      - name: Select Terraform Workspace
+        run: terraform workspace select dev || terraform workspace new dev
+
+      - name: Plan Terraform
+        run: terraform plan -out=tfplan
+
+      - name: Apply Terraform
+        run: terraform apply -auto-approve tfplan
+
+      - name: Get EC2 Public IP
+        id: get-ip
+        run: echo "EC2_IP=$(terraform output -raw public_ip)" >> $GITHUB_ENV
+
+  ansible-deployment:
+    name: Deploy to EC2 using Ansible
+    needs: infra-provisioning
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Ansible Repo
+        uses: actions/checkout@v4
+        with:
+          repository: NRDivyaSree-swaas/ansible-roles
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Install ansible
+        run: sudo apt update && sudo apt install -y ansible
+
+      - name: Create dynamic ansible inventory file
+        run: |
+          echo "[webserver]" > inventory.ini
+          echo "${{ env.EC2_IP }} ansible_user=ubuntu ansible_ssh_private_key_file=~/.ssh/id_rsa ansible_python_interpreter=/usr/bin/python3" >> inventory.ini
+
+      - name: Run ansible playbook
+        run: ansible-playbook -i inventory.ini playbook.yml
+
+  backend-deployment-1:
+    name: Deploy ANI_LeadManagement_Auth_Management_API on EC2
+    needs: infra-provisioning
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Backend Repo for ANI_LeadManagement_Auth_Management_API
+        uses: actions/checkout@v4
+        with:
+          repository: systems/ANI_LeadManagement_Auth_Management_API
+          token: ${{ secrets.GH_PAT }}
+          ref: dev
+
+      - name: Wait for EC2 to be Ready
+        run: sleep 60 # Ensure instance is fully booted
+
+      - name: SSH into EC2 and Deploy ANI_LeadManagement_Auth_Management_API
+        run: |
+          ssh -o StrictHostKeyChecking=no -T -i ~/.ssh/id_rsa ubuntu@${{ env.EC2_IP }} << 'EOF'
+            set -x
+            cd /opt/project_workspace/ani/backend/dev/ANI_LeadManagement_Auth_Management_API/
+
+            # Stop PM2 service if running
+            source ~/.nvm/nvm.sh && pm2 stop Ani_auth_api || true
+
+            # Clone the repository
+            git 
+            # Move to repo directory
+            cd /opt/project_workspace/ani/backend/dev/ANI_LeadManagement_Auth_Management_API/ANI_LeadManagement_Auth_Management_API/
+
+            # Create .env file from GitHub Secrets
+            echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" >> .env
+            echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> .env
+            echo "AWS_SESSION_TOKEN=${{ secrets.AWS_SESSION_TOKEN }}" >> .env
+            echo "LAMBDA_FUNCTION_NAME=${{ secrets.LAMBDA_FUNCTION_NAME }}" >> .env
+
+            # Install dependencies
+            source ~/.nvm/nvm.sh && npm install
+
+            # Restart PM2 service
+            source ~/.nvm/nvm.sh && pm2 restart Ani_auth_api
+          EOF
+
+  backend-deployment-2:
+    name: Deploy Ani_lead_management_api on EC2
+    needs: backend-deployment-1
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Backend Repo for Ani_lead_management_api
+        uses: actions/checkout@v4
+        with:
+          repository: systems/ani_lead_management_api
+          token: ${{ secrets.GH_PAT }}
+          ref: dev
+
+      - name: Wait for EC2 to be Ready
+        run: sleep 60 # Ensure instance is fully booted
+
+      - name: SSH into EC2 and Deploy Ani_lead_management_api
+        run: |
+          ssh -o StrictHostKeyChecking=no -T -i ~/.ssh/id_rsa ubuntu@${{ env.EC2_IP }} << 'EOF'
+            set -x
+            cd /opt/project_workspace/ani/backend/dev/ani_lead_management_api/
+
+            # Stop PM2 service if running
+            source ~/.nvm/nvm.sh && pm2 stop 3 || true
+
+            # Clone the repository
+            git clone -b dev https://${{ secrets.Repo_USERNAME }}:${{ secrets.Repo_PAT }}@github.com/systems/ani_lead_management_api.git
+
+            # Move to repo directory
+            cd /opt/project_workspace/ani/backend/dev/ani_lead_management_api/ani_lead_management_api/
+
+            # Create .env file from GitHub Secrets
+            echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" >> .env
+            echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> .env
+            echo "AWS_SESSION_TOKEN=${{ secrets.AWS_SESSION_TOKEN }}" >> .env
+            echo "LAMBDA_FUNCTION_NAME=${{ secrets.LAMBDA_FUNCTION_NAME }}" >> .env
+
+            # Install dependencies
+            source ~/.nvm/nvm.sh && npm install
+
+            # Restart PM2 service
+            source ~/.nvm/nvm.sh && pm2 restart 3
+          EOF
+
+  backend-deployment-3:
+    name: Deploy Ani_admin_management_api on EC2
+    needs: backend-deployment-2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Backend Repo for Ani_admin_management_api
+        uses: actions/checkout@v4
+        with:
+          repository: systems/ani_admin_management_api
+          token: ${{ secrets.GH_PAT }}
+          ref: dev
+
+      - name: Wait for EC2 to be Ready
+        run: sleep 60 # Ensure instance is fully booted
+
+      - name: SSH into EC2 and Deploy Ani_admin_management_api
+        run: |
+          ssh -o StrictHostKeyChecking=no -T -i ~/.ssh/id_rsa ubuntu@${{ env.EC2_IP }} << 'EOF'
+            set -x
+            cd /opt/project_workspace/ani/backend/dev/Ani_Admin_Management_Api/
+
+            # Stop PM2 service if running
+            source ~/.nvm/nvm.sh && pm2 stop 2 || true
+
+            # Clone the repository
+            git clone -b dev https://${{ secrets.Repo_USERNAME }}:${{ secrets.Repo_PAT }}@github.com/systems/ani_admin_management_api.git
+
+            # Move to repo directory
+            cd /opt/project_workspace/ani/backend/dev/Ani_Admin_Management_Api/ani_admin_management_api/
+
+            # Create .env file from GitHub Secrets
+            echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" >> .env
+            echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> .env
+            echo "AWS_SESSION_TOKEN=${{ secrets.AWS_SESSION_TOKEN }}" >> .env
+            echo "LAMBDA_FUNCTION_NAME=${{ secrets.LAMBDA_FUNCTION_NAME }}" >> .env
+
+            # Install dependencies
+            source ~/.nvm/nvm.sh && npm install
+
+            # Restart PM2 service
+            source ~/.nvm/nvm.sh && pm2 restart 2
+          EOF
