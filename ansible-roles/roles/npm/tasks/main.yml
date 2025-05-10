@@ -1,0 +1,43 @@
+---
+# tasks file for npm
+- name: Ensure apt cache is up-to-date
+  apt:
+    update_cache: yes
+  become: yes
+
+- name: Install dependencies
+  apt:
+    name:
+      - curl
+      - software-properties-common
+    state: present
+  become: yes
+
+    #- name: Remove existing Node.js (if any)
+  #apt:
+    #name: nodejs
+      #state: absent
+      #become: yes
+
+- name: Download NodeSource script
+  shell: curl -fsSL https://deb.nodesource.com/setup_{{ node_version }} | bash -
+  become: yes
+
+- name: Install Node.js (npm included)
+  apt:
+    name: nodejs
+    state: present
+  become: yes
+  notify: Restart nginx
+
+- name: Verify npm and Node.js versions
+  shell: |
+    echo "Node.js version: $(node -v)"
+    echo "npm version: $(npm -v)"
+  register: versions
+  changed_when: false
+  become: yes
+
+- name: Display Node.js and npm versions
+  debug:
+    msg: "{{ versions.stdout }}"

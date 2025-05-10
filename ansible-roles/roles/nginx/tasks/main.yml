@@ -1,0 +1,18 @@
+---
+# tasks file for nginx
+- name: Ensure apt cache is up-to-date
+  apt:
+    update_cache: yes
+  become: yes
+
+- name: install nginx
+  apt:
+    name: nginx
+    state: present
+  tags: i-nginx
+
+- name: start nginx
+  service:
+    name: nginx
+    state: started
+    enabled: true  
