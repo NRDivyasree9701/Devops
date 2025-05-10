@@ -1,0 +1,113 @@
+#--- 
+#- name: Install and start service
+#  hosts: all
+#  become: true
+#  roles:
+#   - { role: nginx, tags: nginx }
+#   - { role: npm, tags: npm }
+#
+---
+- name: Install services on ec2
+  hosts: all
+  become: true
+  vars:
+    node_version: "22.x"
+    pm2_version: "latest"
+    nvm_version: "v0.39.7"
+
+  tasks:
+    - name: Ensure apt cache is up-to-date
+      apt:
+        update_cache: yes
+
+    - name: Install dependencies
+      apt:
+        name:
+          - curl
+          - wget
+          - software-properties-common
+          - bash
+        state: present
+
+    - name: Install Nginx
+      apt:
+        name: nginx
+        state: present
+      tags: i-nginx
+
+    - name: Start and Enable Nginx Service
+      service:
+        name: nginx
+        state: started
+        enabled: true
+
+    # - name: Remove existing Node.js (if any)
+    #   apt:
+    #     name: nodejs
+    #     state: absent
+    - name: Download NodeSource script
+      shell: curl -fsSL https://deb.nodesource.com/setup_{{ node_version }} | bash -
+      
+    - name: Install Node.js (npm included)
+      apt:
+        name: nodejs
+        state: present
+      notify: Restart nginx
+
+    - name: Verify npm and Node.js versions
+      shell: |
+        echo "Node.js version: $(node -v)"
+        echo "npm version: $(npm -v)"
+      register: versions
+      changed_when: false
+
+    - name: Display Node.js and npm versions
+      debug:
+        msg: "{{ versions.stdout }}"
+
+    - name: Install NVM
+      shell: |
+        export NVM_DIR="$HOME/.nvm"
+        mkdir -p "$NVM_DIR"
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/{{ nvm_version }}/install.sh | bash
+      args:
+        executable: /bin/bash
+        creates: "{{ ansible_env.HOME }}/.nvm/nvm.sh"
+      environment:
+        HOME: "{{ ansible_env.HOME }}"
+
+    - name: Load NVM into shell
+      shell: |
+        export NVM_DIR="$HOME/.nvm"
+        echo 'export NVM_DIR="$HOME/.nvm"' >> ~/.bashrc
+        echo '[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"' >> ~/.bashrc
+      args:
+        executable: /bin/bash
+      environment:
+        HOME: "{{ ansible_env.HOME }}"
+
+    - name: Install PM2 globally
+      npm:
+        name: pm2
+        global: yes
+        state: present
+        version: "{{ pm2_version }}"
+
+    - name: Set up PM2 as a startup service
+      command: pm2 startup systemd
+      register: pm2_startup_output
+      changed_when: true
+
+    - name: Enable PM2 on startup
+      shell: systemctl enable pm2-root
+      args:
+        executable: /bin/bash
+
+    - name: Save PM2 process list
+      shell: pm2 save
+
+  handlers:
+    - name: Restart nginx
+      service:
+        name: nginx
+        state: restarted

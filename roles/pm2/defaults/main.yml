@@ -1,0 +1,4 @@
+---
+# defaults file for pm2
+pm2_version: "latest"
+node_version: "22.x"

@@ -1,0 +1,4 @@
+---
+# handlers file for pm2
+- name: Restart PM2
+  command: pm2 restart all

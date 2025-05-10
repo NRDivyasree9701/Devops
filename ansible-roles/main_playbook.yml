@@ -1,0 +1,7 @@
+--- 
+- name: Install and start service
+  hosts: all
+  become: true
+  roles:
+    - { role: nginx, tags: nginx }
+    - { role: npm, tags: npm }

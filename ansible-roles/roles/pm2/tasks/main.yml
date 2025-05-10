@@ -1,0 +1,23 @@
+---
+# tasks file for pm2
+- name: Install PM2 globally
+  npm:
+    name: pm2
+    global: yes
+    state: present
+    version: "{{ pm2_version }}"
+
+- name: Set up PM2 as a startup service
+  command: pm2 startup systemd
+  register: pm2_startup_output
+  changed_when: true
+
+- name: Enable PM2 on startup
+  shell: systemctl enable pm2-root
+  args:
+    executable: /bin/bash
+  become: yes
+
+- name: Save PM2 process list
+  shell: pm2 save
+  become: yes

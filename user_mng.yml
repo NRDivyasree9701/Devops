@@ -1,0 +1,12 @@
+---
+- name: User Mng
+  hosts: localhost
+  become : yes
+
+  tasks: 
+  - name: User Creation
+    user:
+      name: divyasree
+      comment: new user adding
+      shell: /bin/bash
+      group: devops

@@ -1,0 +1,9 @@
+---
+- name: fist playbook
+  hosts: localhost
+
+  tasks:
+  - name: test connectivity
+    ping:
+  - name: "print a msg"
+    debug: msg="Alright!"
